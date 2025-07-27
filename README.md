@@ -1,4 +1,4 @@
-# Repo feed from Ouckah/Summer-2025-Internships
+# Repo feed from vanshb03/Summer2026-Internships
 [![Tests](https://github.com/cvrve/internships-bot/actions/workflows/coverage.yml/badge.svg)](https://github.com/cvrve/internships-bot/actions)
 
 ## Overview
