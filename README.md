@@ -23,8 +23,8 @@ This project is a Discord bot designed to monitor a GitHub repository for new in
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/Ouckah/Summer2025-Internships.git
-    cd Summer2025-Internships
+    git clone https://github.com/vanshb03/Summer2026-Internships.git
+    cd Summer2026-Internships
     ```
 
 2. Install the required Python packages:
