@@ -7,20 +7,56 @@ import schedule
 import discord
 from discord.ext import tasks, commands
 import asyncio
+from dotenv import load_dotenv
+import sys
 
-# Constants
-REPO_URL = 'https://github.com/cvrve/Summer2025-Internships'
-LOCAL_REPO_PATH = 'Summer2025-Internships'
+# Load environment variables
+load_dotenv()
+
+# Configuration validation
+def validate_config():
+    """Validate required configuration values on startup"""
+    required_vars = ['DISCORD_TOKEN', 'CHANNEL_IDS']
+    missing_vars = []
+    
+    for var in required_vars:
+        if not os.getenv(var):
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print(f"Error: Missing required environment variables: {', '.join(missing_vars)}")
+        print("Please check your .env file or set these environment variables.")
+        sys.exit(1)
+    
+    # Validate channel IDs format
+    try:
+        channel_ids = os.getenv('CHANNEL_IDS').split(',')
+        for channel_id in channel_ids:
+            int(channel_id.strip())
+    except (ValueError, AttributeError):
+        print("Error: CHANNEL_IDS must be comma-separated integers")
+        sys.exit(1)
+    
+    print("Configuration validation passed.")
+
+# Validate configuration on startup
+validate_config()
+
+# Constants from environment variables
+REPO_URL = os.getenv('REPO_URL', 'https://github.com/cvrve/Summer2025-Internships')
+LOCAL_REPO_PATH = os.getenv('LOCAL_REPO_PATH', 'Summer2025-Internships')
 JSON_FILE_PATH = os.path.join(LOCAL_REPO_PATH, '.github', 'scripts', 'listings.json')
-DISCORD_TOKEN = '' #! Your Discord token
-CHANNEL_IDS = '' #! Your channel IDs
-MAX_RETRIES = 3  # Maximum number of retries for failed channels
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_IDS = [id.strip() for id in os.getenv('CHANNEL_IDS').split(',')]
+MAX_RETRIES = int(os.getenv('MAX_RETRIES', '3'))
+CHECK_INTERVAL_MINUTES = int(os.getenv('CHECK_INTERVAL_MINUTES', '1'))
 
 # Initialize Discord bot and global variables
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix='!', intents=intents)
 failed_channels = set()  # Keep track of channels that have failed
 channel_failure_counts = {}  # Track failure counts for each channel
+message_tracking = {}  # Track sent messages for role expiration updates
 
 def clone_or_update_repo():
     """
@@ -93,12 +129,65 @@ def format_deactivation_message(role):
 >>> # {role['company_name']} internship is no longer active
 
 ### Role:
-[{role['title']}]({role['url']})
+~~[{role['title']}](about:blank)~~ (Link disabled - position closed)
 
 ### Status: `Inactive`
 ### Deactivated on: {datetime.now().strftime('%B, %d')}
 made by the team @ [{cvrve}](https://www.cvrve.me/)
 """
+
+async def update_expired_role_messages(role):
+    """
+    Update previously sent messages for a role that has expired/been deactivated.
+    
+    :param role: The role dictionary containing internship information
+    :return: None
+    """
+    role_key = f"{role['company_name']}_{role['title']}"
+    
+    if role_key not in message_tracking:
+        print(f"No messages found to update for role: {role_key}")
+        return
+    
+    updated_message = f"""
+>>> # ❌ {role['company_name']} internship is now CLOSED
+
+### Role:
+~~[{role['title']}](about:blank)~~ (Link disabled - position closed)
+
+### Location:
+{', '.join(role['locations']) if role['locations'] else 'Not specified'}
+
+### Season:
+{role['season']}
+
+### Status: `🔴 CLOSED`
+### Closed on: {datetime.now().strftime('%B, %d')}
+made by the team @ [cvrve](https://www.cvrve.me/)
+"""
+    
+    messages_to_update = message_tracking[role_key]
+    
+    for msg_info in messages_to_update:
+        try:
+            channel = bot.get_channel(int(msg_info['channel_id']))
+            if channel is None:
+                channel = await bot.fetch_channel(int(msg_info['channel_id']))
+            
+            message = await channel.fetch_message(msg_info['message_id'])
+            await message.edit(content=updated_message)
+            print(f"Updated message {msg_info['message_id']} in channel {msg_info['channel_id']}")
+            
+        except discord.NotFound:
+            print(f"Message {msg_info['message_id']} not found in channel {msg_info['channel_id']}")
+        except discord.Forbidden:
+            print(f"No permission to edit message {msg_info['message_id']} in channel {msg_info['channel_id']}")
+        except Exception as e:
+            print(f"Error updating message {msg_info['message_id']}: {e}")
+    
+    # Clean up tracking for this role
+    del message_tracking[role_key]
+    print(f"Completed updating messages for expired role: {role_key}")
 
 def compare_roles(old_role, new_role):
     """
@@ -115,12 +204,13 @@ def compare_roles(old_role, new_role):
             changes.append(f"{key} changed from {old_role.get(key)} to {new_role.get(key)}")
     return changes
 
-async def send_message(message, channel_id):
+async def send_message(message, channel_id, role_key=None):
     """
     The function sends a message to a Discord channel with error handling and retry mechanism.
     
     :param message: The message content to send
     :param channel_id: The Discord channel ID
+    :param role_key: Optional role key for tracking messages (company_name + title)
     :return: None
     """
     if channel_id in failed_channels:
@@ -152,8 +242,18 @@ async def send_message(message, channel_id):
                     failed_channels.add(channel_id)
                 return
 
-        await channel.send(message)
+        sent_message = await channel.send(message)
         print(f"Successfully sent message to channel {channel_id}")
+        
+        # Track message for potential expiration updates
+        if role_key:
+            if role_key not in message_tracking:
+                message_tracking[role_key] = []
+            message_tracking[role_key].append({
+                'channel_id': channel_id,
+                'message_id': sent_message.id,
+                'timestamp': datetime.now()
+            })
         
         # Reset failure count on success
         if channel_id in channel_failure_counts:
@@ -168,17 +268,18 @@ async def send_message(message, channel_id):
             print(f"Channel {channel_id} has failed {MAX_RETRIES} times, adding to failed channels")
             failed_channels.add(channel_id)
 
-async def send_messages_to_channels(message):
+async def send_messages_to_channels(message, role_key=None):
     """
     Sends a message to multiple Discord channels concurrently with error handling.
     
     :param message: The message content to send
+    :param role_key: Optional role key for tracking messages
     :return: None
     """
     tasks = []
     for channel_id in CHANNEL_IDS:
         if channel_id not in failed_channels:
-            tasks.append(send_message(message, channel_id))
+            tasks.append(send_message(message, channel_id, role_key))
     
     # Wait for all messages to be sent
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -221,11 +322,15 @@ def check_for_new_roles():
 
     # Handle new roles
     for role in new_roles:
+        role_key = f"{role['company_name']}_{role['title']}"
         message = format_message(role)
-        bot.loop.create_task(send_messages_to_channels(message))
+        bot.loop.create_task(send_messages_to_channels(message, role_key))
 
     # Handle deactivated roles
     for role in deactivated_roles:
+        # Update existing messages for this role
+        bot.loop.create_task(update_expired_role_messages(role))
+        # Also send a new deactivation message
         message = format_deactivation_message(role)
         bot.loop.create_task(send_messages_to_channels(message))
 
@@ -243,22 +348,78 @@ async def on_ready():
     Event handler for when the bot is ready and connected to Discord.
     """
     print(f'Logged in as {bot.user}')
+    print(f'Bot is ready and monitoring {len(CHANNEL_IDS)} channels')
     while True:
         schedule.run_pending()
         await asyncio.sleep(1)
 
-# Schedule the job
-schedule.every(1).minutes.do(check_for_new_roles)
+# Graceful shutdown handler
+import signal
 
-# Run the bot
-print("Starting bot...")
-if DISCORD_TOKEN != '' and CHANNEL_IDS != '':
-    bot.run(DISCORD_TOKEN)
-elif DISCORD_TOKEN == '' and CHANNEL_IDS == '':
-    print("Please provide your Discord token and channel IDs.")
-elif CHANNEL_IDS == '':
-    print("Please provide your channel IDs.")
-elif DISCORD_TOKEN == '':
-    print("Please provide your Discord token.")
-else:
-    print("An unknown error occurred.")
+def signal_handler(sig, frame):
+    """Handle graceful shutdown"""
+    print("\nShutting down gracefully...")
+    save_message_tracking()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# Schedule the job with configurable interval
+schedule.every(CHECK_INTERVAL_MINUTES).minutes.do(check_for_new_roles)
+
+# Save and load message tracking data
+def save_message_tracking():
+    """Save message tracking data to file"""
+    try:
+        # Convert datetime objects to strings for JSON serialization
+        serializable_tracking = {}
+        for role_key, messages in message_tracking.items():
+            serializable_tracking[role_key] = []
+            for msg in messages:
+                msg_copy = msg.copy()
+                msg_copy['timestamp'] = msg_copy['timestamp'].isoformat()
+                serializable_tracking[role_key].append(msg_copy)
+        
+        with open('message_tracking.json', 'w') as f:
+            json.dump(serializable_tracking, f, indent=2)
+        print("Message tracking data saved.")
+    except Exception as e:
+        print(f"Error saving message tracking data: {e}")
+
+def load_message_tracking():
+    """Load message tracking data from file"""
+    global message_tracking
+    try:
+        if os.path.exists('message_tracking.json'):
+            with open('message_tracking.json', 'r') as f:
+                serializable_tracking = json.load(f)
+            
+            # Convert timestamp strings back to datetime objects
+            for role_key, messages in serializable_tracking.items():
+                message_tracking[role_key] = []
+                for msg in messages:
+                    msg['timestamp'] = datetime.fromisoformat(msg['timestamp'])
+                    message_tracking[role_key].append(msg)
+            
+            print(f"Loaded message tracking data for {len(message_tracking)} roles.")
+    except Exception as e:
+        print(f"Error loading message tracking data: {e}")
+
+def main():
+    """Main function to run the bot"""
+    # Load existing message tracking data on startup
+    load_message_tracking()
+    
+    # Run the bot
+    print("Starting bot with environment configuration...")
+    print(f"Monitoring {len(CHANNEL_IDS)} channels every {CHECK_INTERVAL_MINUTES} minutes")
+    try:
+        bot.run(DISCORD_TOKEN)
+    except Exception as e:
+        print(f"Error starting bot: {e}")
+        save_message_tracking()  # Save data before exit
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
