@@ -2,34 +2,43 @@ name: Check Job Postings
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:         # manual trigger
 
 jobs:
   check_jobs:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
 
+    steps:
+      # Checkout main repo + submodules
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v3
+        with:
+          submodules: true  # ensures submodule is checked out
+
+      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
+      # Install dependencies
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Run the bot
       - name: Run bot check
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CHANNEL_IDS: ${{ secrets.CHANNEL_IDS }}
         run: python mainbot.py
 
+      # Commit updated JSON back to the main repo
       - name: Commit updated JSON
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add data/previous_roles.json
+          git add .
           git commit -m "Update previous roles [skip ci]" || echo "No changes to commit"
           git push
         env:
