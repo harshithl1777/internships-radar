@@ -216,26 +216,6 @@ failed_channels = set()  # Keep track of channels that have failed
 channel_failure_counts = {}  # Track failure counts for each channel
 
 
-def clone_or_update_repo():
-    """
-    The function `clone_or_update_repo` clones a repository if it doesn't exist locally or updates it if
-    it already exists.
-    """
-    print("Cloning or updating repository...")
-    if os.path.exists(LOCAL_REPO_PATH):
-        try:
-            repo = git.Repo(LOCAL_REPO_PATH)
-            repo.remotes.origin.pull()
-            print("Repository updated.")
-        except git.exc.InvalidGitRepositoryError:
-            os.rmdir(LOCAL_REPO_PATH)  # Remove invalid directory
-            git.Repo.clone_from(REPO_URL, LOCAL_REPO_PATH)
-            print("Repository cloned fresh.")
-    else:
-        git.Repo.clone_from(REPO_URL, LOCAL_REPO_PATH)
-        print("Repository cloned fresh.")
-
-
 def read_json():
     """
     The function `read_json()` reads a JSON file and returns the loaded data.
@@ -370,7 +350,6 @@ def check_for_new_roles():
     The function checks for new roles and deactivated roles, sending appropriate messages to Discord channels.
     """
     print("Checking for new roles...")
-    clone_or_update_repo()
 
     new_data = read_json()
 
