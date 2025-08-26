@@ -20,12 +20,14 @@ jobs:
       
       - name: Update submodule to latest main
         run: |
-          git submodule foreach '
-            branch="main"
-            echo "Updating $name to latest $branch..."
-            git fetch origin $branch
-            git checkout $branch
-            git pull origin $branch
+          for dir in $(git config --file .gitmodules --get-regexp path | awk '{ print $2 }'); do
+            echo "Updating $dir..."
+            cd $dir
+            git fetch origin main
+            git checkout main
+            git pull origin main
+            cd -
+          done
 
       # Set up Python
       - name: Set up Python
