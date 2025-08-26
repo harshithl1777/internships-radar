@@ -23,9 +23,9 @@ jobs:
           for dir in $(git config --file .gitmodules --get-regexp path | awk '{ print $2 }'); do
             echo "Updating $dir..."
             cd $dir
-            git fetch origin main
-            git checkout main
-            git pull origin main
+            git fetch origin dev
+            git checkout dev
+            git pull origin dev
             cd -
           done
 
