@@ -9905,20 +9905,5 @@
         "company_url": "",
         "is_visible": true,
         "season": "Summer"
-    },
-    {
-        "date_updated": 1756225638,
-        "url": "https://boards.greenhouse.io/embed/job_app?token=7169069",
-        "locations": ["Mountain View, CA"],
-        "sponsorship": "Other",
-        "active": true,
-        "company_name": "Nuro",
-        "title": "Systems Engineering Intern, Scenario Taxonomy",
-        "source": "vanshb03",
-        "id": "7b1daeb6-2d04-41da-b0d6-820d11348751",
-        "date_posted": 1756225638,
-        "company_url": "",
-        "is_visible": true,
-        "season": "Summer"
     }
 ]
