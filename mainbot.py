@@ -345,7 +345,7 @@ async def send_messages_to_channels(message, role_key=None):
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def check_for_new_roles():
+def async check_for_new_roles():
     """
     The function checks for new roles and deactivated roles, sending appropriate messages to Discord channels.
     """
@@ -384,7 +384,7 @@ def check_for_new_roles():
     for role in new_roles:
         role_key = f"{role['company_name']}_{role['title']}"
         message = format_message(role)
-        bot.loop.create_task(send_messages_to_channels(message, role_key))
+        await send_messages_to_channels(message, role_key)
 
     # Update previous data
     with open("previous_data.json", "w") as file:
