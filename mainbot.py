@@ -402,7 +402,7 @@ async def on_ready():
     """
     print(f"Logged in as {bot.user}")
     print(f"Bot is ready and monitoring {len(CHANNEL_IDS)} channels")
-    check_for_new_roles()
+    await check_for_new_roles()
     await bot.close()
 
 
