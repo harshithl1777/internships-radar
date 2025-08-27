@@ -345,7 +345,7 @@ async def send_messages_to_channels(message, role_key=None):
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def async check_for_new_roles():
+async def check_for_new_roles():
     """
     The function checks for new roles and deactivated roles, sending appropriate messages to Discord channels.
     """
