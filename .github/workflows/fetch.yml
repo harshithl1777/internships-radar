@@ -2,7 +2,7 @@ name: Check Job Postings
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # every 5 minutes
+    - cron: "*/5 * * * *"   # every 5 minutes
   workflow_dispatch:         # manual trigger
 
 permissions:
