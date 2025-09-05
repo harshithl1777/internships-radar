@@ -148,6 +148,7 @@ BIGTECH = [
     "uber",
     "unity",
     "verkada",
+    "vercel",
     "vimeo",
     "visa",
     "vmware",
